@@ -18,6 +18,15 @@ A lightweight Poshmark inventory and profit tracker for any kind of reselling.
 
 No environment variables or database setup are needed.
 
+## Optional USPS tracking updates
+
+To show live USPS updates beside a tracking number, add these encrypted Vercel environment variables to the project:
+
+- `USPS_CONSUMER_KEY`
+- `USPS_CONSUMER_SECRET`
+
+Both values come from the Credentials section of your USPS Customer Onboarding Portal app. They are used only by the server-side tracking route and are never exposed in the browser.
+
 ## Important data note
 
 Inventory is intentionally stored only in the browser you use. It makes the first version private and friction-free, but it does not sync automatically between devices. Use **Back up** before switching browsers/devices, then use **Restore** on the new device.
