@@ -21,7 +21,7 @@ const money = (value: number) => new Intl.NumberFormat("en-US", { style: "curren
 const feeFor = (sale: number) => !sale ? 0 : sale < 15 ? 2.95 : sale * 0.2;
 const earningsFor = (watch: Watch) => watch.poshEarnings ?? (watch.soldPrice ? watch.soldPrice - feeFor(watch.soldPrice) : 0);
 const profitFor = (watch: Watch) => watch.status === "Sold" && watch.soldPrice ? watch.netProfit ?? earningsFor(watch) - watch.cost - watch.inbound : 0;
-const ageFor = (watch: Watch) => Math.max(0, Math.floor((Date.now() - new Date(`T12:00:00`).getTime()) / 86400000));
+const ageFor = (watch: Watch) => { const date = watch.listedOn || watch.boughtOn; const timestamp = new Date(`${date}T12:00:00`).getTime(); return Number.isFinite(timestamp) ? Math.max(0, Math.floor((Date.now() - timestamp) / 86400000)) : 0; };
 const LOCAL_MERGE_KEY = "fliptrack-cloud-merge-v1";
 const mergeInventory = (remote: Watch[], local: Watch[]) => { const merged = new Map(remote.map((item) => [item.id, item])); local.forEach((item) => merged.set(item.id, { ...merged.get(item.id), ...item })); return [...merged.values()]; };
 
