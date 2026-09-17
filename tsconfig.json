@@ -37,11 +37,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "db",
-    "worker",
-    "build",
-    "examples",
-    "tests"
+    "node_modules"
   ]
 }
