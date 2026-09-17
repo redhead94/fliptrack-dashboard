@@ -23,7 +23,7 @@ export async function GET() {
     await ensureSchema(sql);
     const rows = await sql`SELECT items, revision, updated_at FROM fliptrack_inventory WHERE owner_key = ${ownerKey}`;
     const items = rows[0]?.items ?? null;
-    const corrected = Array.isArray(items) ? items.map((item: { model?: string; soldPrice?: number; netProfit?: number }) => item.model === "70408" && item.soldPrice === 49 && item.netProfit === 32.71 ? { ...item, cost: 16.85, poshEarnings: 32.71, netProfit: 15.86 } : item) : items;
+    const corrected = Array.isArray(items) ? items.map((item: { model?: string; soldPrice?: number; poshEarnings?: number }) => item.model === "70408" && item.soldPrice === 49 && item.poshEarnings === 32.71 ? { ...item, cost: 16.85, poshEarnings: 32.71 } : item) : items;
     return NextResponse.json({ items: corrected, revision: rows[0] ? Number(rows[0].revision) : 0, updatedAt: rows[0]?.updated_at ? new Date(rows[0].updated_at).toISOString() : null });
   } catch {
     return NextResponse.json({ error: "Database connection is not ready yet." }, { status: 503 });
