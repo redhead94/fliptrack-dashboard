@@ -16,7 +16,13 @@ A lightweight Poshmark inventory and profit tracker for any kind of reselling.
 2. In Vercel, choose **Add New → Project** and import that repository.
 3. Keep the detected Next.js settings and click **Deploy**.
 
-No environment variables or database setup are needed.
+## Required environment variables
+
+Shared inventory sync needs a Postgres database. Add this encrypted Vercel environment variable:
+
+- `DATABASE_URL` — a Postgres connection string (e.g. Neon). The inventory route creates its `fliptrack_inventory` table automatically on first use.
+
+Without `DATABASE_URL`, the tracker still works from the browser but cannot sync between devices, and the sync indicator stays off.
 
 ## Optional USPS tracking updates
 
@@ -29,7 +35,9 @@ Both values come from the Credentials section of your USPS Customer Onboarding P
 
 ## Important data note
 
-Inventory is intentionally stored only in the browser you use. It makes the first version private and friction-free, but it does not sync automatically between devices. Use **Back up** before switching browsers/devices, then use **Restore** on the new device.
+Each device keeps a local copy of your inventory in its browser and mirrors it to the shared Postgres row above. This is what syncs your inventory across devices.
+
+The current version has no sign-in: every visitor of the deployed site reads and writes the **same** shared inventory. Until per-user authentication is added, treat this as a single-person tool and do not deploy it where strangers will edit your inventory. Use **Back up** before clearing your browser or switching browsers, then **Restore** on a new device.
 
 ## Run locally
 
