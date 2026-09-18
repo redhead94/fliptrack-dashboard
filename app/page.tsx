@@ -260,8 +260,15 @@ export default function Home() {
   const backup = () => download(JSON.stringify({ inventory: watches, bids }), "fliptrack-backup.json", "application/json");
   const restore = (event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { const incoming: unknown = JSON.parse(String(reader.result)); if (Array.isArray(incoming) && incoming.every(isValidWatch)) { setWatches(incoming); return; } const backupData = incoming as { inventory?: unknown; bids?: unknown }; if (Array.isArray(backupData.inventory) && backupData.inventory.every(isValidWatch) && (backupData.bids === undefined || (Array.isArray(backupData.bids) && backupData.bids.every(isValidBid)))) { setWatches(backupData.inventory); if (Array.isArray(backupData.bids)) setBids(backupData.bids); return; } window.alert("That backup file does not look like FlipTrack data."); } catch { window.alert("That backup file could not be read."); } }; reader.readAsText(file); event.target.value = ""; };
   const changeSearch = (value: string) => setSearch(value);
-  const saveBid = (entry: BidGuideEntry) => setBids((items) => [entry, ...items.filter((item) => bidKey(item) !== bidKey(entry))]);
-  const removeBid = (id: string) => { if (window.confirm("Remove this bid guide entry?")) setBids((items) => items.filter((item) => item.id !== id)); };
+  const saveBid = (entry: BidGuideEntry) => setBids((items) => [entry, ...items.filter((item) => item.id !== entry.id && bidKey(item) !== bidKey(entry))]);
+  const removeBid = (id: string) => {
+    if (!window.confirm("Remove this bid guide entry?")) return;
+    setBids((items) => {
+      const next = items.filter((item) => item.id !== id);
+      void persistBids(next);
+      return next;
+    });
+  };
   const syncLabel = inventorySyncState === "offline" || bidSyncState === "offline" ? "Sync paused — changes are saved on this device." : inventorySyncState === "saving" || bidSyncState === "saving" ? "Saving to cloud…" : "Saved to cloud across your devices.";
 
   return <main className="app-shell">
