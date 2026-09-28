@@ -68,6 +68,7 @@ export default function Home() {
   const revisionRef = useRef(0);
   const lastSavedRef = useRef("");
   const syncInFlight = useRef(false);
+  const inventorySaveQueuedRef = useRef(false);
   const watchesRef = useRef<Watch[]>(starter);
   const hasInventoryLoadedRef = useRef(false);
   const bidRevisionRef = useRef(0);
@@ -76,8 +77,8 @@ export default function Home() {
   const bidsRef = useRef<BidGuideEntry[]>([]);
   const hasBidGuideLoadedRef = useRef(false);
 
-  const persist = useCallback((items: Watch[]) => {
-    if (syncInFlight.current) return Promise.resolve();
+  const persist = useCallback(function persist(items: Watch[]) {
+    if (syncInFlight.current) { inventorySaveQueuedRef.current = true; return Promise.resolve(); }
     syncInFlight.current = true;
     setInventorySyncState("saving");
     return fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, revision: revisionRef.current }) })
@@ -87,7 +88,7 @@ export default function Home() {
         else if (data.conflict) { revisionRef.current = Number(data.revision ?? 0); lastSavedRef.current = ""; setWatches(mergeInventory(Array.isArray(data.items) ? data.items : [], items)); }
       })
       .catch(() => setInventorySyncState("offline"))
-      .finally(() => { syncInFlight.current = false; });
+      .finally(() => { syncInFlight.current = false; if (inventorySaveQueuedRef.current) { inventorySaveQueuedRef.current = false; void persist(watchesRef.current); } });
   }, []);
 
   const persistBids = useCallback((items: BidGuideEntry[]) => {
