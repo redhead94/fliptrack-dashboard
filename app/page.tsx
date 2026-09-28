@@ -69,6 +69,7 @@ export default function Home() {
   const lastSavedRef = useRef("");
   const syncInFlight = useRef(false);
   const inventorySaveQueuedRef = useRef(false);
+  const deletedInventoryIdsRef = useRef(new Set<string>());
   const watchesRef = useRef<Watch[]>(starter);
   const hasInventoryLoadedRef = useRef(false);
   const bidRevisionRef = useRef(0);
@@ -79,13 +80,14 @@ export default function Home() {
 
   const persist = useCallback(function persist(items: Watch[]) {
     if (syncInFlight.current) { inventorySaveQueuedRef.current = true; return Promise.resolve(); }
+    const deletedIdsInThisSave = new Set(deletedInventoryIdsRef.current);
     syncInFlight.current = true;
     setInventorySyncState("saving");
     return fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, revision: revisionRef.current }) })
       .then(async (response) => ({ response, data: await response.json().catch(() => ({})) }))
       .then(({ response, data }) => {
-        if (response.ok) { revisionRef.current = Number(data.revision ?? revisionRef.current + 1); lastSavedRef.current = JSON.stringify(items); setInventorySyncState("saved"); }
-        else if (data.conflict) { revisionRef.current = Number(data.revision ?? 0); lastSavedRef.current = ""; setWatches(mergeInventory(Array.isArray(data.items) ? data.items : [], items)); }
+        if (response.ok) { deletedIdsInThisSave.forEach((id) => deletedInventoryIdsRef.current.delete(id)); revisionRef.current = Number(data.revision ?? revisionRef.current + 1); lastSavedRef.current = JSON.stringify(items); setInventorySyncState("saved"); }
+        else if (data.conflict) { revisionRef.current = Number(data.revision ?? 0); lastSavedRef.current = ""; const deletedIds = deletedInventoryIdsRef.current; const remote = Array.isArray(data.items) ? data.items.filter((item: Watch) => !deletedIds.has(item.id)) : []; const local = items.filter((item) => !deletedIds.has(item.id)); setWatches(mergeInventory(remote, local)); }
       })
       .catch(() => setInventorySyncState("offline"))
       .finally(() => { syncInFlight.current = false; if (inventorySaveQueuedRef.current) { inventorySaveQueuedRef.current = false; void persist(watchesRef.current); } });
@@ -256,7 +258,7 @@ export default function Home() {
 
   const update = (id: string, changes: Partial<Watch>) => setWatches((items) => items.map((item) => item.id === id ? { ...item, ...changes } : item));
   const clone = (item: Watch) => { const copy: Watch = { ...item, id: `${item.model || item.name || "item"}-${Date.now()}`, boughtOn: new Date().toISOString().slice(0, 10), status: "In transit", listedOn: undefined, soldPrice: undefined, soldOn: undefined, poshEarnings: undefined, tracking: "", poshUrl: "" }; setWatches((items) => [copy, ...items]); setEditing(copy); };
-  const remove = (id: string) => { if (window.confirm("Remove this item from your tracker?")) setWatches((items) => items.filter((item) => item.id !== id)); };
+  const remove = (id: string) => { if (window.confirm("Remove this item from your tracker?")) { deletedInventoryIdsRef.current.add(id); setWatches((items) => items.filter((item) => item.id !== id)); } };
   const download = (body: string, filename: string, type: string) => { const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([body], { type })); link.download = filename; link.click(); URL.revokeObjectURL(link.href); };
   const exportCsv = () => { const headers = ["Name", "Category", "SKU / model", "Paid by", "Bought on", "Cost", "Inbound shipping", "List price", "Status", "Sold price", "Sold on", "Poshmark payout", "Profit", "Notes"]; const rows = watches.map((item) => [item.name, item.category || "", item.model, item.paidBy || "Caroline", item.boughtOn, round2(item.cost), round2(item.inbound), round2(item.listPrice), item.status, item.soldPrice == null ? "" : round2(item.soldPrice), item.soldOn ?? "", item.poshEarnings == null ? "" : round2(item.poshEarnings), profitFor(item), item.notes ?? ""]); download([headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n"), "fliptrack-export.csv", "text/csv"); };
   const backup = () => download(JSON.stringify({ inventory: watches, bids }), "fliptrack-backup.json", "application/json");
