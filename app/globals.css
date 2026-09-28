@@ -15,3 +15,4 @@
 .bid-table th:last-child,.bid-table td:last-child{position:sticky;right:0;background:var(--surface);box-shadow:-7px 0 10px #edf0eb}.bid-table th:last-child{background:#f8f9f6}.bid-actions .remove-bid{font-size:0}.bid-actions .remove-bid:after{content:"Delete";font-size:11px;font-weight:800}.bid-actions .remove-bid:hover:after{color:var(--red)}
 .mobile-bottom button.mobile-remove{background:#fff1f1;color:var(--red);font-size:16px;line-height:1;padding:4px 8px}
 @media(max-width:640px){.mobile-bottom button:last-child{background:#eff2ed;color:#526057}.mobile-bottom button.mobile-sell{background:var(--ink);color:#fff}.mobile-bottom button.mobile-remove{background:#fff1f1;color:var(--red)}}
+@media(max-width:640px){.mobile-bottom{align-items:flex-start}.mobile-bottom>div{flex:1;justify-content:flex-end;flex-wrap:wrap}.mobile-bottom button.mobile-remove{font-size:10px;line-height:normal;padding:7px;color:var(--red);background:#fff1f1}}
