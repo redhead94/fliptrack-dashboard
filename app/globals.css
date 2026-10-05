@@ -16,3 +16,4 @@
 .mobile-bottom button.mobile-remove{background:#fff1f1;color:var(--red);font-size:16px;line-height:1;padding:4px 8px}
 @media(max-width:640px){.mobile-bottom button:last-child{background:#eff2ed;color:#526057}.mobile-bottom button.mobile-sell{background:var(--ink);color:#fff}.mobile-bottom button.mobile-remove{background:#fff1f1;color:var(--red)}}
 @media(max-width:640px){.mobile-bottom{align-items:flex-start}.mobile-bottom>div{flex:1;justify-content:flex-end;flex-wrap:wrap}.mobile-bottom button.mobile-remove{font-size:10px;line-height:normal;padding:7px;color:var(--red);background:#fff1f1}}
+.shipping-discount-input{margin-top:14px}.shipping-discount-input input{font-size:16px;padding:10px}
