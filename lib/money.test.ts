@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { earningsFor, feeFor, feesFor, grossFor, profitFor, round2, shippingDiscountFor } from "./money.ts";
+import { earningsFor, estimatedProfitFor, feeFor, feesFor, grossFor, profitFor, round2, shippingDiscountFor } from "./money.ts";
 
 describe("round2", () => {
   it("rounds to two decimal places", () => {
@@ -83,5 +83,27 @@ describe("profitFor", () => {
   });
   it("is zero for a sold item with no sale data", () => {
     assert.equal(profitFor({ status: "Sold", cost: 13.56, inbound: 2 }), 0);
+  });
+});
+
+describe("estimatedProfitFor", () => {
+  it("projects profit at the current list price using the Poshmark fee", () => {
+    assert.equal(estimatedProfitFor({ status: "Listed", cost: 13.56, inbound: 2, listPrice: 50 }), 24.44);
+  });
+  it("uses the $2.95 minimum fee for list prices under $15", () => {
+    assert.equal(estimatedProfitFor({ status: "Listed", cost: 3, inbound: 0, listPrice: 10 }), 4.05);
+  });
+  it("subtracts a recorded shipping discount", () => {
+    assert.equal(estimatedProfitFor({ status: "Listed", cost: 13.56, inbound: 2, listPrice: 50, poshShippingDiscount: 4 }), 20.44);
+  });
+  it("is null when there is no list price", () => {
+    assert.equal(estimatedProfitFor({ status: "Listed", cost: 13.56, inbound: 2, listPrice: 0 }), null);
+    assert.equal(estimatedProfitFor({ status: "Bought", cost: 13.56, inbound: 2 }), null);
+  });
+  it("is null once the item is sold", () => {
+    assert.equal(estimatedProfitFor({ status: "Sold", cost: 13.56, inbound: 2, listPrice: 50, soldPrice: 49 }), null);
+  });
+  it("can be negative", () => {
+    assert.equal(estimatedProfitFor({ status: "Listed", cost: 80, inbound: 5, listPrice: 50 }), -45);
   });
 });
