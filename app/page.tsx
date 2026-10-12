@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { earningsFor, feeFor, feesFor, grossFor, profitFor, round2 } from "@/lib/money";
 
 type Status = "Bought" | "In transit" | "Received" | "Listed" | "Sold";
 type View = "overview" | "inventory" | "sales" | "cash" | "bids";
@@ -15,7 +16,10 @@ const BID_LOCAL_MERGE_KEY = "fliptrack-bid-guide-cloud-merge-v1";
 const DELETED_INVENTORY_IDS_KEY = "fliptrack-deleted-inventory-ids-v1";
 const INVENTORY_PENDING_SYNC_KEY = "fliptrack-inventory-pending-sync-v1";
 const BID_PENDING_SYNC_KEY = "fliptrack-bid-guide-pending-sync-v1";
-const round2 = (value: number) => Math.round(value * 100) / 100;
+const syncHeaders = (init?: RequestInit) => {
+  const key = process.env.NEXT_PUBLIC_FLIPTRACK_SYNC_KEY;
+  return { ...init, headers: { ...init?.headers, ...(key ? { "x-fliptrack-key": key } : {}) } };
+};
 const localDate = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60_000;
@@ -25,18 +29,7 @@ const normalizeForSearch = (value: string) => value.toLowerCase().replace(/[^a-z
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
 const pipelineStatus = (status: Status): Exclude<Status, "Bought"> | "In transit" | "Received" => status === "Bought" ? "In transit" : status;
 const STATUS_ORDER: Record<Exclude<Status, "Bought"> | "In transit" | "Received", number> = { "In transit": 0, Received: 1, Listed: 2, Sold: 3 };
-const feeFor = (sale: number) => round2(!sale ? 0 : sale < 15 ? 2.95 : sale * 0.2);
-const shippingDiscountFor = (item: Watch) => round2(item.poshShippingDiscount ?? 0);
-const earningsFor = (item: Watch) => round2(item.poshEarnings ?? (item.soldPrice != null ? item.soldPrice - feeFor(item.soldPrice) - shippingDiscountFor(item) : 0));
-const grossFor = (item: Watch) => {
-  if (item.soldPrice != null) return round2(item.soldPrice);
-  const payout = item.poshEarnings;
-  if (payout == null) return 0;
-  return round2(payout <= 11.8 ? payout + 2.95 : payout / 0.8);
-};
-const feesFor = (item: Watch) => round2(Math.max(0, grossFor(item) - earningsFor(item)));
 const bidKey = (item: Pick<BidGuideEntry, "model" | "name">) => `${item.model.trim().toLowerCase()}::${item.name.trim().toLowerCase()}`;
-const profitFor = (item: Watch) => item.status === "Sold" && (item.soldPrice != null || item.poshEarnings != null) ? round2(earningsFor(item) - item.cost - item.inbound) : 0;
 const ageFor = (item: Watch) => { if (!item.listedOn) return null; const timestamp = new Date(`${item.listedOn}T12:00:00`).getTime(); return Number.isFinite(timestamp) ? Math.max(0, Math.floor((Date.now() - timestamp) / 86400000)) : null; };
 const totalCost = (item: Watch) => round2(item.cost + item.inbound);
 const isValidWatch = (item: unknown): item is Watch => { const value = item as Record<string, unknown>; return typeof value === "object" && value !== null && typeof value.id === "string" && typeof value.cost === "number" && Number.isFinite(value.cost) && typeof value.inbound === "number" && Number.isFinite(value.inbound) && (typeof value.listPrice === "number" || value.listPrice === undefined) && typeof value.boughtOn === "string" && (value.status === "Bought" || value.status === "In transit" || value.status === "Received" || value.status === "Listed" || value.status === "Sold"); };
@@ -72,8 +65,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [synced, setSynced] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
-  const [inventorySyncState, setInventorySyncState] = useState<"saving" | "saved" | "offline">("saving");
-  const [bidSyncState, setBidSyncState] = useState<"saving" | "saved" | "offline">("saving");
+  const [inventorySyncState, setInventorySyncState] = useState<"saving" | "saved" | "offline" | "private">("saving");
+  const [bidSyncState, setBidSyncState] = useState<"saving" | "saved" | "offline" | "private">("saving");
   const revisionRef = useRef(0);
   const lastSavedRef = useRef("");
   const syncInFlight = useRef(false);
@@ -93,7 +86,7 @@ export default function Home() {
     const deletedIdsInThisSave = new Set(deletedInventoryIdsRef.current);
     syncInFlight.current = true;
     setInventorySyncState("saving");
-    return fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, deletedIds: [...deletedInventoryIdsRef.current], revision: revisionRef.current }) })
+    return fetch("/api/inventory", syncHeaders({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, deletedIds: [...deletedInventoryIdsRef.current], revision: revisionRef.current }) }))
       .then(async (response) => ({ response, data: await response.json().catch(() => ({})) }))
       .then(({ response, data }) => {
         if (response.ok) { deletedIdsInThisSave.forEach((id) => deletedInventoryIdsRef.current.delete(id)); window.localStorage.setItem(DELETED_INVENTORY_IDS_KEY, JSON.stringify([...deletedInventoryIdsRef.current])); window.localStorage.removeItem(INVENTORY_PENDING_SYNC_KEY); revisionRef.current = Number(data.revision ?? revisionRef.current + 1); lastSavedRef.current = JSON.stringify(items); setInventorySyncState("saved"); }
@@ -107,7 +100,7 @@ export default function Home() {
     if (bidSyncInFlight.current) { bidSaveQueuedRef.current = true; return Promise.resolve(); }
     bidSyncInFlight.current = true;
     setBidSyncState("saving");
-    return fetch("/api/bid-guide", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bids: items, revision: bidRevisionRef.current }) })
+    return fetch("/api/bid-guide", syncHeaders({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bids: items, revision: bidRevisionRef.current }) }))
       .then(async (response) => ({ response, data: await response.json().catch(() => ({})) }))
       .then(({ response, data }) => {
         if (response.ok) { window.localStorage.removeItem(BID_PENDING_SYNC_KEY); bidRevisionRef.current = Number(data.revision ?? bidRevisionRef.current + 1); bidLastSavedRef.current = JSON.stringify(items); setBidSyncState("saved"); }
@@ -156,8 +149,8 @@ export default function Home() {
     if (!ready) return;
     const mergeLocal = (Boolean(window.localStorage.getItem(STORAGE_KEY)) && !window.localStorage.getItem(LOCAL_MERGE_KEY)) || Boolean(window.localStorage.getItem(INVENTORY_PENDING_SYNC_KEY));
     const localIsNewer = hasInventoryLoadedRef.current && JSON.stringify(watchesRef.current) !== lastSavedRef.current;
-    fetch("/api/inventory").then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => {
-      if (!response.ok) { setInventorySyncState("offline"); return; }
+    fetch("/api/inventory", syncHeaders()).then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => {
+      if (!response.ok) { setInventorySyncState(response.status === 401 ? "private" : "offline"); return; }
       const serverDeleted: string[] = Array.isArray(data.deletedIds) ? data.deletedIds.filter((id: unknown): id is string => typeof id === "string") : [];
       serverDeleted.forEach((id) => deletedInventoryIdsRef.current.add(id));
       window.localStorage.setItem(DELETED_INVENTORY_IDS_KEY, JSON.stringify([...deletedInventoryIdsRef.current]));
@@ -187,8 +180,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    fetch("/api/bid-guide").then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => {
-      if (!response.ok) { setBidSyncState("offline"); return; }
+    fetch("/api/bid-guide", syncHeaders()).then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => {
+      if (!response.ok) { setBidSyncState(response.status === 401 ? "private" : "offline"); return; }
       const remote = Array.isArray(data.bids) ? data.bids : [];
       bidRevisionRef.current = Number(data.revision ?? 0);
       const local = window.localStorage.getItem(BID_GUIDE_STORAGE_KEY);
@@ -273,7 +266,7 @@ export default function Home() {
   const changeSearch = (value: string) => setSearch(value);
   const saveBid = (entry: BidGuideEntry) => setBids((items) => [entry, ...items.filter((item) => item.id !== entry.id && bidKey(item) !== bidKey(entry))]);
   const removeBid = (id: string) => { if (window.confirm("Remove this bid guide entry?")) setBids((items) => items.filter((item) => item.id !== id)); };
-  const syncLabel = inventorySyncState === "offline" || bidSyncState === "offline" ? "Sync paused — changes are saved on this device." : inventorySyncState === "saving" || bidSyncState === "saving" ? "Saving to cloud…" : "Saved to cloud across your devices.";
+  const syncLabel = inventorySyncState === "private" || bidSyncState === "private" ? "This FlipTrack sync is private. Add the shared key (NEXT_PUBLIC_FLIPTRACK_SYNC_KEY) to your Vercel project to sync across devices." : inventorySyncState === "offline" || bidSyncState === "offline" ? "Sync paused — changes are saved on this device." : inventorySyncState === "saving" || bidSyncState === "saving" ? "Saving to cloud…" : "Saved to cloud across your devices.";
 
   return <main className="app-shell">
     <header className="app-topbar">
@@ -288,7 +281,7 @@ export default function Home() {
     {view === "sales" && <SalesView stats={stats} monthly={monthly} />}
     {view === "cash" && <CashView ledger={ledger} watches={watches} />}
 
-    <p className={`footnote sync-status ${inventorySyncState === "offline" || bidSyncState === "offline" ? "sync-offline" : ""}`}>{syncLabel}</p>
+    <p className={`footnote sync-status ${inventorySyncState === "offline" || inventorySyncState === "private" || bidSyncState === "offline" || bidSyncState === "private" ? "sync-offline" : ""}`}>{syncLabel}</p>
     {showForm && <AddWatch onClose={() => setShowForm(false)} onAdd={(item) => { setWatches((items) => [item, ...items]); setShowForm(false); }} />}
     {showBidForm && <BidGuideForm onClose={() => setShowBidForm(false)} onSave={(entry) => { saveBid(entry); setShowBidForm(false); }} />}
     {editingBid && <BidGuideForm entry={editingBid} onClose={() => setEditingBid(null)} onSave={(entry) => { saveBid(entry); setEditingBid(null); }} />}

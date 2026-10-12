@@ -40,6 +40,10 @@ Each device keeps local copies of your inventory and Bid Guide in its browser an
 
 The current version has no sign-in: every visitor of the deployed site reads and writes the **same** shared inventory. Until per-user authentication is added, treat this as a single-person tool and do not deploy it where strangers will edit your inventory. Use **Back up** before clearing your browser or switching browsers, then **Restore** on a new device.
 
+To lock the sync endpoints behind a shared key, add this environment variable (it is exposed to the browser, so it keeps casual visitors out rather than providing real authentication):
+
+- `NEXT_PUBLIC_FLIPTRACK_SYNC_KEY` — any long random string. Leave it unset to keep the tracker open.
+
 ## Run locally
 
 ```bash

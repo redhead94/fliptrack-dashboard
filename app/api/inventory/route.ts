@@ -5,6 +5,7 @@ const ownerKey = "fliptrack-shared-inventory";
 const tableSql = "CREATE TABLE IF NOT EXISTS fliptrack_inventory (owner_key TEXT PRIMARY KEY, items JSONB NOT NULL, deleted_ids JSONB NOT NULL DEFAULT '[]'::jsonb, revision BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())";
 const revisionSql = "ALTER TABLE fliptrack_inventory ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 0";
 const deletedIdsSql = "ALTER TABLE fliptrack_inventory ADD COLUMN IF NOT EXISTS deleted_ids JSONB NOT NULL DEFAULT '[]'::jsonb";
+const MAX_PAYLOAD_BYTES = 1_000_000;
 let schemaReady: Promise<void> | undefined;
 
 function database() {
@@ -29,7 +30,22 @@ function stringIds(value: unknown) {
   return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 }
 
-export async function GET() {
+function authorized(request: Request) {
+  const expected = process.env.NEXT_PUBLIC_FLIPTRACK_SYNC_KEY;
+  if (!expected) return true;
+  return request.headers.get("x-fliptrack-key") === expected;
+}
+
+function unauthorized() {
+  return NextResponse.json({ error: "This FlipTrack sync is private. Add the shared key to your Vercel project." }, { status: 401 });
+}
+
+function validItems(value: unknown): value is Array<{ id: string }> {
+  return Array.isArray(value) && value.every((item) => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string");
+}
+
+export async function GET(request: Request) {
+  if (!authorized(request)) return unauthorized();
   try {
     const sql = database();
     await ensureSchema(sql);
@@ -44,9 +60,12 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  if (!authorized(request)) return unauthorized();
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > MAX_PAYLOAD_BYTES) return NextResponse.json({ error: "Inventory payload is too large." }, { status: 413 });
   let body: { items?: unknown; deletedIds?: unknown; revision?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid inventory payload." }, { status: 400 }); }
-  if (!Array.isArray(body.items)) return NextResponse.json({ error: "Invalid inventory payload." }, { status: 400 });
+  if (!validItems(body.items)) return NextResponse.json({ error: "Invalid inventory payload." }, { status: 400 });
   const baseRevision = Number.isFinite(Number(body.revision)) ? Number(body.revision) : 0;
   const requestedDeletedIds = stringIds(body.deletedIds);
   try {
@@ -54,7 +73,7 @@ export async function PUT(request: Request) {
     await ensureSchema(sql);
     const current = await sql`SELECT deleted_ids FROM fliptrack_inventory WHERE owner_key = ${ownerKey}`;
     const deletedIds = [...new Set([...stringIds(current[0]?.deleted_ids), ...requestedDeletedIds])];
-    const items = body.items.filter((item): item is { id?: unknown } => typeof item === "object" && item !== null && !deletedIds.includes(String((item as { id?: unknown }).id)));
+    const items = body.items.filter((item) => !deletedIds.includes(item.id));
     const payload = JSON.stringify(items);
     const deletedPayload = JSON.stringify(deletedIds);
     const updated = await sql`UPDATE fliptrack_inventory SET items = ${payload}::jsonb, deleted_ids = ${deletedPayload}::jsonb, revision = ${baseRevision + 1}, updated_at = NOW() WHERE owner_key = ${ownerKey} AND revision = ${baseRevision} RETURNING revision`;

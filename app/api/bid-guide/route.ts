@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const ownerKey = "fliptrack-shared-inventory";
 const tableSql = "CREATE TABLE IF NOT EXISTS fliptrack_bid_guide (owner_key TEXT PRIMARY KEY, bids JSONB NOT NULL DEFAULT '[]'::jsonb, revision BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())";
+const MAX_PAYLOAD_BYTES = 1_000_000;
 let schemaReady: Promise<void> | undefined;
 
 function database() {
@@ -19,7 +20,22 @@ function ensureSchema(sql: ReturnType<typeof database>) {
   return schemaReady;
 }
 
-export async function GET() {
+function authorized(request: Request) {
+  const expected = process.env.NEXT_PUBLIC_FLIPTRACK_SYNC_KEY;
+  if (!expected) return true;
+  return request.headers.get("x-fliptrack-key") === expected;
+}
+
+function unauthorized() {
+  return NextResponse.json({ error: "This FlipTrack sync is private. Add the shared key to your Vercel project." }, { status: 401 });
+}
+
+function validBids(value: unknown) {
+  return Array.isArray(value) && value.every((bid) => typeof bid === "object" && bid !== null && typeof (bid as { model?: unknown }).model === "string" && typeof (bid as { name?: unknown }).name === "string" && typeof (bid as { maxBid?: unknown }).maxBid === "number");
+}
+
+export async function GET(request: Request) {
+  if (!authorized(request)) return unauthorized();
   try {
     const sql = database();
     await ensureSchema(sql);
@@ -32,9 +48,12 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  if (!authorized(request)) return unauthorized();
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > MAX_PAYLOAD_BYTES) return NextResponse.json({ error: "Bid Guide payload is too large." }, { status: 413 });
   let body: { bids?: unknown; revision?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid bid guide payload." }, { status: 400 }); }
-  if (!Array.isArray(body.bids)) return NextResponse.json({ error: "Invalid bid guide payload." }, { status: 400 });
+  if (!validBids(body.bids)) return NextResponse.json({ error: "Invalid bid guide payload." }, { status: 400 });
   const baseRevision = Number.isFinite(Number(body.revision)) ? Number(body.revision) : 0;
   try {
     const sql = database();
