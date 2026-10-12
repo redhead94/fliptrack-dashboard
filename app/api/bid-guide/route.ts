@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const ownerKey = "fliptrack-shared-inventory";
 const tableSql = "CREATE TABLE IF NOT EXISTS fliptrack_bid_guide (owner_key TEXT PRIMARY KEY, bids JSONB NOT NULL DEFAULT '[]'::jsonb, revision BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())";
+let schemaReady: Promise<void> | undefined;
 
 function database() {
   const url = process.env.DATABASE_URL;
@@ -10,24 +11,34 @@ function database() {
   return neon(url);
 }
 
+function ensureSchema(sql: ReturnType<typeof database>) {
+  if (!schemaReady) {
+    schemaReady = sql.query(tableSql).then(() => undefined);
+    void schemaReady.catch(() => { schemaReady = undefined; });
+  }
+  return schemaReady;
+}
+
 export async function GET() {
   try {
     const sql = database();
-    await sql.query(tableSql);
+    await ensureSchema(sql);
     const rows = await sql`SELECT bids, revision, updated_at FROM fliptrack_bid_guide WHERE owner_key = ${ownerKey}`;
     return NextResponse.json({ bids: rows[0]?.bids ?? [], revision: rows[0] ? Number(rows[0].revision) : 0, updatedAt: rows[0]?.updated_at ? new Date(rows[0].updated_at).toISOString() : null });
-  } catch {
+  } catch (error) {
+    console.error("FlipTrack bid guide GET failed", error);
     return NextResponse.json({ error: "Bid Guide could not connect to the database." }, { status: 503 });
   }
 }
 
 export async function PUT(request: Request) {
-  const body = await request.json();
+  let body: { bids?: unknown; revision?: unknown };
+  try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid bid guide payload." }, { status: 400 }); }
   if (!Array.isArray(body.bids)) return NextResponse.json({ error: "Invalid bid guide payload." }, { status: 400 });
   const baseRevision = Number.isFinite(Number(body.revision)) ? Number(body.revision) : 0;
   try {
     const sql = database();
-    await sql.query(tableSql);
+    await ensureSchema(sql);
     const payload = JSON.stringify(body.bids);
     const updated = await sql`UPDATE fliptrack_bid_guide SET bids = ${payload}::jsonb, revision = ${baseRevision + 1}, updated_at = NOW() WHERE owner_key = ${ownerKey} AND revision = ${baseRevision} RETURNING revision`;
     if (updated.length) return NextResponse.json({ ok: true, revision: Number(updated[0].revision) });
@@ -37,7 +48,8 @@ export async function PUT(request: Request) {
       if (created.length) return NextResponse.json({ ok: true, revision: 1 });
     }
     return NextResponse.json({ error: "Bid Guide changed elsewhere. Refresh and try again.", conflict: true, bids: current[0]?.bids ?? [], revision: current[0] ? Number(current[0].revision) : 0 }, { status: 409 });
-  } catch {
+  } catch (error) {
+    console.error("FlipTrack bid guide PUT failed", error);
     return NextResponse.json({ error: "Bid Guide could not save to the database." }, { status: 503 });
   }
 }
