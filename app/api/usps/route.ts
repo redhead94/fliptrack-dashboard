@@ -5,7 +5,7 @@ const TOKEN_TTL_MS = 30 * 60_000;
 const RESULT_TTL_MS = 5 * 60_000;
 
 type TokenCache = { token: string; expiresAt: number } | undefined;
-type ResultCache = { status: string; summary: string; expiresAt: number };
+type ResultCache = { status: string; summary: string; location: string; expiresAt: number };
 
 let tokenCache: TokenCache = undefined;
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   if (!clientId || !clientSecret) return NextResponse.json({ error: "USPS credentials have not been added to Vercel yet." }, { status: 503 });
 
   const cached = resultCache.get(tracking);
-  if (cached && cached.expiresAt > Date.now()) return NextResponse.json({ status: cached.status, summary: cached.summary, cached: true });
+  if (cached && cached.expiresAt > Date.now()) return NextResponse.json({ status: cached.status, summary: cached.summary, location: cached.location, cached: true });
 
   try {
     const token = await accessToken(clientId, clientSecret);
@@ -39,8 +39,10 @@ export async function GET(request: NextRequest) {
     const result = await trackingResponse.json();
     const status = result.status || result.TrackResults?.TrackInfo?.TrackSummary || "USPS update available";
     const summary = result.statusSummary || result.TrackResults?.TrackInfo?.TrackSummary || "";
-    resultCache.set(tracking, { status, summary, expiresAt: Date.now() + RESULT_TTL_MS });
-    return NextResponse.json({ status, summary });
+    const latestDetail = result.TrackResults?.TrackInfo?.TrackDetail?.[0] || result.trackResults?.trackInfo?.trackDetail?.[0];
+    const location = [latestDetail?.EventCity, latestDetail?.EventState].filter(Boolean).join(", ");
+    resultCache.set(tracking, { status, summary, location, expiresAt: Date.now() + RESULT_TTL_MS });
+    return NextResponse.json({ status, summary, location });
   } catch (error) {
     console.error("FlipTrack USPS tracking lookup failed", error);
     return NextResponse.json({ error: "USPS could not retrieve that tracking number." }, { status: 502 });

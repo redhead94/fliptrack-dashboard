@@ -7,6 +7,7 @@ type Status = "Bought" | "In transit" | "Received" | "Listed" | "Sold";
 type View = "overview" | "inventory" | "sales" | "cash" | "bids";
 type Watch = { id: string; model: string; name: string; category: string; boughtOn: string; cost: number; inbound: number; listPrice: number; status: Status; paidBy?: "Caroline" | "Ben"; soldPrice?: number; soldOn?: string; listedOn?: string; poshEarnings?: number; poshShippingDiscount?: number; tracking?: string; poshUrl?: string; notes?: string };
 type BidGuideEntry = { id: string; model: string; name: string; category: string; maxBid: number; expectedSale?: number; notes?: string; updatedOn: string };
+type TrackingUpdate = { status: string; summary: string; location: string };
 
 const STORAGE_KEY = "watchflip-inventory-v1";
 const PURCHASE_MIGRATION_KEY = "fliptrack-recorded-purchases-v6";
@@ -16,6 +17,21 @@ const BID_LOCAL_MERGE_KEY = "fliptrack-bid-guide-cloud-merge-v1";
 const DELETED_INVENTORY_IDS_KEY = "fliptrack-deleted-inventory-ids-v1";
 const INVENTORY_PENDING_SYNC_KEY = "fliptrack-inventory-pending-sync-v1";
 const BID_PENDING_SYNC_KEY = "fliptrack-bid-guide-pending-sync-v1";
+const trackingRequestCache = new Map<string, Promise<TrackingUpdate>>();
+const loadTrackingUpdate = (tracking: string) => {
+  const cached = trackingRequestCache.get(tracking);
+  if (cached) return cached;
+  const request = fetch(`/api/usps?tracking=${encodeURIComponent(tracking)}`).then(async (response) => {
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "USPS update unavailable");
+    return { status: data.status || "USPS update", summary: data.summary || "", location: data.location || "" } as TrackingUpdate;
+  }).catch(() => {
+    trackingRequestCache.delete(tracking);
+    return { status: "USPS update pending", summary: "USPS has not returned a shipment update yet.", location: "" };
+  });
+  trackingRequestCache.set(tracking, request);
+  return request;
+};
 const syncHeaders = (init?: RequestInit) => {
   const key = process.env.NEXT_PUBLIC_FLIPTRACK_SYNC_KEY;
   return { ...init, headers: { ...init?.headers, ...(key ? { "x-fliptrack-key": key } : {}) } };
@@ -325,13 +341,23 @@ function CashView({ ledger, watches }: { ledger: { id: string; date: string; typ
   return <section className="page-view"><div className="page-heading"><div><p className="eyebrow">CASH FLOW</p><h1>Money in and out</h1><p>Sales payouts and purchases are different from profit—both matter.</p></div></div><div className="cash-person-grid">{people.map((person) => <article className="cash-person-card" key={person.person}><div><span>{person.person}</span><b>{money(person.putIn)}</b><small>put into {person.items} item{person.items === 1 ? "" : "s"}</small></div><dl><div><dt>Poshmark payouts</dt><dd>{money(person.payouts)}</dd></div><div><dt>Still tied up</dt><dd>{money(person.tiedUp)}</dd></div></dl></article>)}</div><section className="ledger-section"><div className="section-heading"><div><h2>Recent money movement</h2><p>Every purchase and Poshmark payout in date order.</p></div></div><div className="ledger">{ledger.map((entry) => <article key={entry.id}><div><b>{entry.label}</b><small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</small></div><strong className={entry.type === "in" ? "inflow" : "outflow"}>{entry.type === "in" ? "+" : "−"}{money(entry.amount)}</strong></article>)}</div></section></section>;
 }
 
+function TrackingBadge({ tracking }: { tracking: string }) {
+  const [update, setUpdate] = useState<TrackingUpdate | null>(null);
+  useEffect(() => { let active = true; loadTrackingUpdate(tracking).then((next) => { if (active) setUpdate(next); }); return () => { active = false; }; }, [tracking]);
+  const text = `${update?.status || "Checking USPS…"} ${update?.location || ""}`.toLowerCase();
+  const icon = text.includes("delivered") ? "✓" : text.includes("out for delivery") ? "🚚" : text.includes("in transit") ? "🚚" : text.includes("pending") ? "⌛" : "📦";
+  const label = update ? update.location || update.status : "Checking USPS…";
+  const detail = update ? [update.status, update.summary, update.location].filter(Boolean).join(" — ") : "Checking USPS tracking";
+  return <span className={`tracking-badge ${text.includes("pending") ? "pending" : ""}`} title={detail}><span aria-hidden="true">{icon}</span><span>{label}</span></span>;
+}
+
 function WatchRow({ item, update, remove, edit, clone, offer }: { item: Watch; update: (id: string, changes: Partial<Watch>) => void; remove: (id: string) => void; edit: () => void; clone: () => void; offer: () => void }) {
   const [selling, setSelling] = useState(false); const [price, setPrice] = useState(item.soldPrice?.toString() ?? ""); const [trackingMessage, setTrackingMessage] = useState(""); const [checkingTracking, setCheckingTracking] = useState(false); const age = ageFor(item); const status = pipelineStatus(item.status); const estimated = estimatedProfitFor(item);
   const markSold = () => { const soldPrice = Number(price); if (price.trim() === "" || !Number.isFinite(soldPrice) || soldPrice < 0) return; update(item.id, { status: "Sold", soldPrice: round2(soldPrice), soldOn: localDate() }); setSelling(false); };
   const relist = () => update(item.id, { status: "Listed", listedOn: item.listedOn || localDate(), soldPrice: undefined, soldOn: undefined, poshEarnings: undefined, poshShippingDiscount: undefined });
   const checkTracking = async () => { if (!item.tracking) return; setCheckingTracking(true); setTrackingMessage(""); try { const response = await fetch(`/api/usps?tracking=${encodeURIComponent(item.tracking)}`); const data = await response.json(); setTrackingMessage(data.summary || data.status || data.error || "No update found."); } catch { setTrackingMessage("Could not reach USPS right now."); } finally { setCheckingTracking(false); } };
   return <tr>
-    <td data-label="Item"><div className="item-name"><span className="item-icon">◷</span><div>{item.poshUrl ? <a href={item.poshUrl} target="_blank" rel="noreferrer">{item.name || item.model || "Untitled item"}</a> : <b>{item.name || item.model || "Untitled item"}</b>}<small>{item.category || "Other"}{item.model ? ` · ${item.model}` : ""}<span className={`payer-badge ${(item.paidBy || "Caroline").toLowerCase()}`} title={`Paid by ${item.paidBy || "Caroline"}`}>{(item.paidBy || "Caroline")[0]}</span></small>{trackingMessage && <small className="tracking-message">{trackingMessage}</small>}</div></div></td>
+    <td data-label="Item"><div className="item-name"><span className="item-icon">◷</span><div>{item.poshUrl ? <a href={item.poshUrl} target="_blank" rel="noreferrer">{item.name || item.model || "Untitled item"}</a> : <b>{item.name || item.model || "Untitled item"}</b>}<small>{item.category || "Other"}{item.model ? ` · ${item.model}` : ""}<span className={`payer-badge ${(item.paidBy || "Caroline").toLowerCase()}`} title={`Paid by ${item.paidBy || "Caroline"}`}>{(item.paidBy || "Caroline")[0]}</span></small>{item.tracking && <TrackingBadge tracking={item.tracking} />}{trackingMessage && <small className="tracking-message">{trackingMessage}</small>}</div></div></td>
     <td data-label="Status"><span className={`status ${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span></td>
     <td data-label="Cost"><b>{money(totalCost(item))}</b></td>
     <td data-label="Age"><span className={age != null && age >= 30 && item.status !== "Sold" ? "age aging" : "age"}>{age == null ? "—" : `${age}d`}</span>{age != null && age >= 30 && item.status !== "Sold" && <small>Review price</small>}</td>
