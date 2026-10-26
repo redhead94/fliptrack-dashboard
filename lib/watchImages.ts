@@ -1,7 +1,61 @@
 // Local thumbnails keyed by model number (files live in /public/watches).
-const known = new Set(["49125", "49850", "69165", "69169", "70408", "70410"]);
+const files: Record<string, string> = {
+  "44719": "/watches/44719.webp",
+  "48843": "/watches/48843.webp",
+  "49040": "/watches/49040.webp",
+  "49125": "/watches/49125.webp",
+  "49850": "/watches/49850.webp",
+  "50948": "/watches/50948.webp",
+  "51052": "/watches/51052.webp",
+  "51057": "/watches/51057.webp",
+  "51061": "/watches/51061.webp",
+  "51073": "/watches/51073.webp",
+  "69165": "/watches/69165.webp",
+  "69169": "/watches/69169.webp",
+  "69384": "/watches/69384.webp",
+  "69451": "/watches/69451.webp",
+  "69892": "/watches/69892.webp",
+  "69954": "/watches/69954.webp",
+  "69973": "/watches/69973.webp",
+  "69997": "/watches/69997.webp",
+  "70232": "/watches/70232.webp",
+  "70246": "/watches/70246.webp",
+  "70268": "/watches/70268.webp",
+  "70270": "/watches/70270.webp",
+  "70271": "/watches/70271.webp",
+  "70272": "/watches/70272.webp",
+  "70274": "/watches/70274.webp",
+  "70275": "/watches/70275.webp",
+  "70306": "/watches/70306.webp",
+  "70316": "/watches/70316.webp",
+  "70319": "/watches/70319.webp",
+  "70324": "/watches/70324.webp",
+  "70382": "/watches/70382.webp",
+  "70383": "/watches/70383.webp",
+  "70384": "/watches/70384.webp",
+  "70391": "/watches/70391.webp",
+  "70392": "/watches/70392.webp",
+  "70397": "/watches/70397.webp",
+  "70402": "/watches/70402.webp",
+  "70408": "/watches/70408.webp",
+  "70410": "/watches/70410.webp",
+  "70411": "/watches/70411.webp",
+  "70412": "/watches/70412.webp",
+  "70438": "/watches/70438.webp",
+  "70439": "/watches/70439.webp",
+  "79012": "/watches/79012.webp",
+  "ACW-GA-L-500": "/watches/ACW-GA-L-500.webp",
+  "ACW-GA-M-100": "/watches/ACW-GA-M-100.webp",
+  "MPW-0226": "/watches/MPW-0226.webp",
+  "MPW-0239": "/watches/MPW-0239.webp",
+  "MPW-0384": "/watches/MPW-0384.webp",
+  "MPW-0387": "/watches/MPW-0387.webp",
+  // Duplicate inventory entries of the same model ("2nd unit").
+  "70232-2": "/watches/70232.webp",
+  "70391-2": "/watches/70391.webp",
+};
 
 export function watchImage(model: string | undefined) {
   const key = (model || "").trim();
-  return known.has(key) ? `/watches/${key}.webp` : undefined;
+  return files[key];
 }
