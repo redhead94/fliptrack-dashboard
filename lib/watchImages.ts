@@ -46,6 +46,8 @@ const files: Record<string, string> = {
   "70439": "/watches/70439.webp",
   "79012": "/watches/79012.webp",
   "ACW-GA-L-500": "/watches/ACW-GA-L-500.webp",
+  "ACW532-002": "/watches/ACW532-002.webp",
+  "ACW532-005": "/watches/ACW532-005.webp",
   "ACW-GA-M-100": "/watches/ACW-GA-M-100.webp",
   "MPW-0226": "/watches/MPW-0226.webp",
   "MPW-0297": "/watches/MPW-0297.webp",
