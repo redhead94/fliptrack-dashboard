@@ -1,5 +1,6 @@
 // Local thumbnails keyed by model number (files live in /public/watches).
 const files: Record<string, string> = {
+  "29407": "/watches/29407.webp",
   "44719": "/watches/44719.webp",
   "48843": "/watches/48843.webp",
   "49040": "/watches/49040.webp",
